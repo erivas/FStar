@@ -451,23 +451,65 @@ let par #a #b #r0 #r1 #pre0 #pre1 #post0 #post1 c0 c1 =
 
 
 /// Semantics of the monad
-/// To resolve non-determinism for MOr, we might need a stream of booleans to pick the left or right branch at each or instruction
-let rec run #a (c:m a) (h:mem) : a * mem =
+/// To resolve non-determinism for MOr, we use a stream of booleans to pick the left or right branch at each or instruction,
+/// and a position number for knowing at which step of the stream we are
+let rec run #a (c:m a) (h:mem) (pos:nat) (stream:nat -> bool) : a * mem =
   match c with
   | Ret x -> x, h
-  | Get b c -> run (FStar.WellFounded.axiom1 c (h b); c (h b)) h
-  | Put b n c -> run c (upd b n h)
-  | MOr c0 c1 -> admit()
+  | Get b c -> run (FStar.WellFounded.axiom1 c (h b); c (h b)) h pos stream
+  | Put b n c -> run c (upd b n h) pos stream
+  | MOr c0 c1 -> match stream pos with
+                | false -> run c0 h (pos + 1) stream
+                | true -> run c1 h (pos + 1) stream
 
 /// The denotational semantics `run` and their axiomatisation `chi` should be coherent
 /// More precisely, if we satisfy chi, then running the command `c` in a state satisfying the precondition
 /// results in a state satisfying the postcondition, and only modifying the specified footprint
 /// This would prove that Hoare triples accepted by chi always match the semantics
-val lemma_chi_characterization (#a:Type) (c:m a) (r:resource) (pre:mem -> Type) (post:mem -> Type) (h0:mem) : Lemma
+val lemma_chi_characterization (#a:Type) (c:m a) (r:resource) (pre:mem -> Type) (post:mem -> Type) (h0:mem) (pos:nat) (stream:nat -> bool) : Lemma
   (requires pre h0 /\ chi c r pre post)
   (ensures (
-    let x, h1 = run c h0 in
+    let x, h1 = run c h0 pos stream in
     post h1 /\ modifies r.view.fp h0 h1)
   )
+let rec lemma_chi_characterization #a c r pre post h0 pos stream =
+  match c with
+  | Ret x -> ()
+  | Get b c -> lemma_chi_characterization (FStar.WellFounded.axiom1 c (h0 b); c (h0 b)) r pre post h0 pos stream
+  | Put b n c -> admit ()
+  | MOr c0 c1 -> lemma_chi_characterization c0 r pre post h0 (pos + 1) stream;
+                lemma_chi_characterization c1 r pre post h0 (pos + 1) stream
 
-let lemma_chi_characterization #a c pre post h0 = admit()
+
+// Resource for a single location (taken from Par.fst)
+let loc_resource b =
+  let fp = Some b in
+  let inv h = True in
+  let sel h = h b in
+  {
+    t = nat;
+    view = {
+      fp = fp;
+      inv = inv;
+      sel = sel
+    }
+  }
+
+// Concrete case for lemma_chi_characterization
+let c_pre : mem -> Type0 = fun h -> h false = 0
+let c_post : mem -> Type0 = fun h -> False
+let c_prog : m unit = Put false 1 (Ret ())
+let c_res : resource = loc_resource false
+let c_h0 : mem = fun b -> match b with
+                       | false -> 0
+                       | true -> 1
+let c_pos : nat = 0
+let c_stream : nat -> bool = fun n -> false
+let c_h1 : mem = let x, h1 = run c_prog c_h0 c_pos c_stream in h1
+
+let c_lemma_chi_pre (_ : unit) : Lemma (chi c_prog c_res c_pre c_post /\ c_pre c_h0) = ()
+let c_lemma_chi_post (_ : unit) : Lemma ((c_post c_h1 /\ modifies c_res.view.fp c_h0 c_h1) ==> False) = ()
+let absurd (_ : unit) : Lemma False =
+  c_lemma_chi_pre ();
+  c_lemma_chi_post ();
+  lemma_chi_characterization c_prog c_res c_pre c_post c_h0 c_pos c_stream
