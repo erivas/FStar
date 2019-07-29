@@ -151,7 +151,7 @@ let (check_frag :
     FStar_Syntax_Syntax.modul FStar_Pervasives_Native.option ->
       FStar_Parser_ParseIt.input_frag ->
         (FStar_Syntax_Syntax.modul FStar_Pervasives_Native.option *
-          FStar_TypeChecker_Env.env * Prims.int)
+          FStar_TypeChecker_Env.env_t * Prims.int)
           FStar_Pervasives_Native.option)
   =
   fun env ->
