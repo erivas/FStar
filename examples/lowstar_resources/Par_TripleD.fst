@@ -168,7 +168,7 @@ let rec chi #a (c:m a) (r:resource) (pre:mem -> Type) (post:mem -> Type) : Type 
         // TODO: Equivalence is probably too strong. Should we rephrase chi to be {r.view.inv /\ pre}c{post /\ r.view.inv}
         // with resource invariants somehow outside of chi?
         (forall h. r.view.inv h <==> r.view.inv (upd b n h)) /\ // The resource invariant is preserved
-        chi c r pre (upd_post post b n) // post
+        (exists i. (forall h. pre h ==> upd_pre i b n h) /\ chi c r i post) // Hoare-like
   | MOr c0 c1 -> chi c0 r pre post /\ chi c1 r pre post
 
 let r_pred (pred:mem -> Type) (r:resource) = fun h -> pred h /\ r.view.inv h
@@ -206,7 +206,7 @@ let rec lemma_chi_characterization #a c r pre post h0 pos stream =
   match c with
   | Ret x -> ()
   | Get b c -> lemma_chi_characterization (FStar.WellFounded.axiom1 c (h0 b); c (h0 b)) r pre post h0 pos stream
-  | Put b n c -> admit ()
+  | Put b n c -> admit () // lemma_chi_characterization c r I post h0 pos stream -> I comes from chi c r pre post.
   | MOr c0 c1 -> lemma_chi_characterization c0 r pre post h0 (pos + 1) stream;
                 lemma_chi_characterization c1 r pre post h0 (pos + 1) stream
 
@@ -237,9 +237,9 @@ let c_pos : nat = 0
 let c_stream : nat -> bool = fun n -> false
 let c_h1 : mem = let x, h1 = run c_prog c_h0 c_pos c_stream in h1
 
-let c_lemma_chi_pre (_ : unit) : Lemma (chi c_prog c_res c_pre c_post /\ c_pre c_h0) = ()
-let c_lemma_chi_post (_ : unit) : Lemma ((c_post c_h1 /\ modifies c_res.view.fp c_h0 c_h1) ==> False) = ()
-let absurd (_ : unit) : Lemma False =
-  c_lemma_chi_pre ();
-  c_lemma_chi_post ();
-  lemma_chi_characterization c_prog c_res c_pre c_post c_h0 c_pos c_stream
+// let c_lemma_chi_pre (_ : unit) : Lemma (chi c_prog c_res c_pre c_post /\ c_pre c_h0) = ()
+// let c_lemma_chi_post (_ : unit) : Lemma ((c_post c_h1 /\ modifies c_res.view.fp c_h0 c_h1) ==> False) = ()
+// let absurd (_ : unit) : Lemma False =
+//   c_lemma_chi_pre ();
+//   c_lemma_chi_post ();
+//   lemma_chi_characterization c_prog c_res c_pre c_post c_h0 c_pos c_stream
